@@ -1,153 +1,104 @@
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-from pytube import YouTube
+from pytube import YouTube, Playlist
 import os
-from pytube import Playlist
 from threading import Thread
 
-# /------------------------------------------/
-#
-# @gvianadev - Guilherme Viana 
-# My site -> http://bit.ly/guilhermevianadev
-#
-# /------------------------------------------/
 
-class PlaylistDownloader():
-    def __init__(self, playlistPath, folderPath) -> None:
-        self.pathPlaylist = playlistPath
-        self.pathFolder = folderPath
+class PlaylistDownloader:
+    def __init__(self, playlist_path: str, folder_path: str) -> None:
+        self.playlist_path = playlist_path
+        self.folder_path = folder_path
 
-    def extractURLS(self): # extract the individual url to download
-        links = []
-        links = Playlist(self.pathPlaylist)        
-        return links
+    def extract_urls(self):
+        """Extract individual URLs from the playlist."""
+        return Playlist(self.playlist_path)
 
-    def download(self, links): # download the playlist
+    def sanitize_filename(self, title: str) -> str:
+        """Replace special characters in filenames."""
+        invalid_chars = {'|', '>', '<', '?', '*', ':', '/', '\\'}
+        return ''.join(' ' if char in invalid_chars else char for char in title)
+
+    def download(self, links):
+        """Download the playlist videos as audio files."""
         for link in links:
-            # download video
-            try:            
+            try:
                 yt = YouTube(link)
+                sanitized_title = self.sanitize_filename(yt.title)
+                print(f"Downloading: {sanitized_title}")
+                yt.streams.filter(only_audio=True).first().download(
+                    output_path=self.folder_path,
+                    filename=sanitized_title
+                )
+                print("Video downloaded successfully.")
+            except Exception as e:
+                print(f"Error downloading video: {e}")
 
-                # replace the special characters to space
-                title = yt.title
-                print(title)
-                new_title = ''
-                for letter in title:
-                    if letter == '|':
-                        title.replace('|', ' ')
-                    
-                    elif letter == '>':
-                        title.replace('>', ' ')
-                    
-                    elif letter == '<':
-                        title.replace('<', ' ')
-                    
-                    elif letter == '?':
-                        title.replace('?', ' ')
-                    
-                    elif letter == '*':
-                        title.replace('*', ' ')
-                    
-                    elif letter == ':':
-                        title.replace(':', ' ')
-                    
-                    elif letter == '/':
-                        title.replace('/', ' ')
-                    
-                    elif letter == '\\':
-                        title.replace('\\', ' ')
-                    else:
-                        new_title += letter
-
-                yt.streams.filter(only_audio=True).first().download(self.pathFolder,filename=new_title)
-
-            except Exception:
-                print("It's not possible download video")
-            
-            else:
-                print('Video downloaded succesfully')
-            
-    def convert(self, listFiles): # convert mp4 file to mp3
-      
-        for file in listFiles:
-            
+    def convert(self, files):
+        """Convert MP4 files to MP3."""
+        for file in files:
             root, ext = os.path.splitext(file)
-            if ext == '.mp4':
-                mp4_path = os.path.join(self.pathFolder, file)
-                mp3_path = os.path.join(self.pathFolder, root + '.mp3')
-                new_file = AudioFileClip(mp4_path)
-                new_file.write_audiofile(mp3_path)
-                os.remove(mp4_path)
+            if ext == ".mp4":
+                mp4_path = os.path.join(self.folder_path, file)
+                mp3_path = os.path.join(self.folder_path, f"{root}.mp3")
+                try:
+                    with AudioFileClip(mp4_path) as audio:
+                        audio.write_audiofile(mp3_path)
+                    os.remove(mp4_path)
+                    print(f"Converted: {file} -> {root}.mp3")
+                except Exception as e:
+                    print(f"Error converting file {file}: {e}")
 
-    def divideList(self, list, length): # divide the downloads in 2 lists to open 2 threads
-        new_list_to_convert = [[], []]
-        
-        if length / 2 == 0:
-            half = int(length / 2)
-            first_part = list[:half].copy()
-            second_part = list[half:].copy()
-            
-            new_list_to_convert.insert(0, first_part)
-            new_list_to_convert.insert(1, second_part)
-            
-        else:
-            half = int(length / 2) + 1
-            first_part = list[:half].copy()
-            second_part = list[half:].copy()
-            new_list_to_convert.insert(0, first_part)
-            new_list_to_convert.insert(1, second_part)
-        
-        return new_list_to_convert
+    @staticmethod
+    def divide_list(items, chunk_size):
+        """Divide a list into chunks."""
+        return [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
 
-    def getMp4Infolder(self): # get the mp4 files in folder to convert
-        cont = 0
-        names = []
-        for file in os.listdir(self.pathFolder):
-            ext = os.path.splitext(file)[1]
-            if ext == '.mp4':
-                cont += 1
-                names.append(file)
-        return (cont, names)
+    def get_mp4_in_folder(self):
+        """Get MP4 files in the folder."""
+        return [file for file in os.listdir(self.folder_path) if file.endswith(".mp4")]
 
-   
- 
-def main(): # here the code that will execute
-                                        # put your playlist link here 
-    instance = PlaylistDownloader(  playlistPath = '',
-                                    folderPath = r'')
-                                        # put here the folder where your playlist will be downloaded
-    
-    # extract and format to download
-    playlist_links = instance.extractURLS()                                
-    playlist_links = instance.divideList(playlist_links, len(playlist_links))
 
-    # download
-    downloader1 = Thread(target=instance.download, daemon=True, args=[playlist_links[0]])
-    downloader2 = Thread(target=instance.download, daemon=True, args=[playlist_links[1]])
-    
-    downloader1.start()
-    downloader2.start()
-    
-    # close threads
-    downloader1.join()
-    downloader2.join()
-    
-    
-    # extract and format to convert
-    lengthMP4, list_of_songs = instance.getMp4Infolder()
-    convert_list = instance.divideList(list_of_songs, lengthMP4)
+def main():
+    # Update with your playlist URL and download folder path
+    playlist_url = "YOUR_PLAYLIST_URL"
+    download_folder = r"YOUR_DOWNLOAD_FOLDER"
 
-    #convert
-    converter1 = Thread(target=instance.convert, daemon=True, args=[convert_list[0]])
-    converter2 = Thread(target=instance.convert, daemon=True, args=[convert_list[1]])
-    
-    converter1.start()
-    converter2.start()
-    
-    # close threads
-    converter1.join()
-    converter2.join()
-    
-    print('All Done :)')
+    downloader = PlaylistDownloader(
+        playlist_path=playlist_url, folder_path=download_folder)
 
-if __name__ == '__main__':
-    main() # run application
+    # Extract and prepare URLs
+    playlist_links = list(downloader.extract_urls())
+    divided_links = downloader.divide_list(
+        playlist_links, len(playlist_links) // 2)
+
+    # Download the playlist using threads
+    threads = [
+        Thread(target=downloader.download, args=(divided_links[0],)),
+        Thread(target=downloader.download, args=(divided_links[1],))
+    ]
+
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    # Get MP4 files and prepare for conversion
+    mp4_files = downloader.get_mp4_in_folder()
+    divided_files = downloader.divide_list(mp4_files, len(mp4_files) // 2)
+
+    # Convert MP4 to MP3 using threads
+    convert_threads = [
+        Thread(target=downloader.convert, args=(divided_files[0],)),
+        Thread(target=downloader.convert, args=(divided_files[1],))
+    ]
+
+    for thread in convert_threads:
+        thread.start()
+    for thread in convert_threads:
+        thread.join()
+
+    print("All Done! :)")
+
+
+if __name__ == "__main__":
+    main()
